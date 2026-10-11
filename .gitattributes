@@ -1,0 +1,18 @@
+# Normalise line endings in the repository so a collaborator on another machine
+# does not see every line of every file as changed.  Working copies still check
+# out with native endings on Windows.
+* text=auto
+
+# Batch files are run by cmd.exe, which wants CRLF.
+*.bat text eol=crlf
+
+# Never touched by the text filters.
+*.png binary
+*.bin binary
+*.dll binary
+*.pdb binary
+*.esp binary
+*.esm binary
+*.ba2 binary
+*.nif binary
+*.hkx binary

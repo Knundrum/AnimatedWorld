@@ -1,0 +1,28 @@
+# Build output and IDE state
+/build*
+/out/
+/vcpkg_installed/
+/.vs/
+/.vscode/
+/.idea/
+/CMakeUserPresets.json
+/compile_commands.json
+
+# CommonLibF4RD is cloned, not committed. It is its own git repository, so
+# committing the folder would record a bare pointer with nothing behind it and
+# anyone cloning this repo would get an empty directory. build.bat prints the
+# clone command, and CMakeLists.txt fails with it if the folder is missing.
+/external/
+
+*.bin
+*.dll
+*.exe
+*.lib
+*.obj
+*.pdb
+*.log
+*.trace
+*.mapping
+*.fail
+*.bak
+*.tmp
