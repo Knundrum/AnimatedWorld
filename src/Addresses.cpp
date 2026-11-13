@@ -269,7 +269,6 @@ namespace AW::Addresses
 		describe("PlayAction"sv, PlayAction);
 		describe("ApplyMaterialSwap"sv, ApplyMaterialSwap);
 		describe("IsActivationBlocked"sv, IsActivationBlocked);
-		describe("WornHasKeyword"sv, WornHasKeyword);
 		describe("PlayPipboyOpenAnim"sv, PlayPipboyOpenAnim);
 
 		logger::info(" hook sites:");

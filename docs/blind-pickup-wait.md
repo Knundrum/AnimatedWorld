@@ -1,5 +1,11 @@
 # Ground pickup on a runtime that cannot time the animation
 
+> **Later note.** This document refers throughout to "the IdleStop fix", a
+> feature of AnimatedWorld at the time of writing. It has since been removed —
+> a partner mod solves that problem better — so the graph event sink now has
+> only two users: the pickup timing described here, and the Pip-Boy reopen. The
+> reasoning below is unchanged; only that third user is gone.
+
 ## What the log showed
 
 ```

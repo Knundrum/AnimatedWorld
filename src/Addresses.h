@@ -63,17 +63,6 @@ namespace AW::Addresses
 	// before ActivateRef (2201147) on OG, and gets the adjacent id 2201146.
 	inline constexpr REL::ID IsActivationBlocked{ 407609, 2201146, 2201146 };
 
-	// bool TESObjectREFR::WornHasKeyword(TESObjectREFR*, BGSKeyword*)
-	// Present in the old in-tree CommonLibF4 fork, absent from CommonLibF4RD.
-	//
-	// AE id from commonlib_NonVR PR #88 (2026-09-17), which names AE 2200995 as
-	// TESObjectREFR::WornHasKeyword at RVA 0x507940 on 1.11.240, from Ghidra and
-	// Address Library evidence.  STATIC PROOF ONLY - that PR states explicitly
-	// that no live runtime result is claimed, and its own pre-merge gate (a probe
-	// on real 1.10.163 / 1.10.984 / 1.11.240 sessions) has not been run.  Verify
-	// the RVA against a real AE session before trusting it.  Inert on OG.
-	inline constexpr REL::ID WornHasKeyword{ 900857, 2200995, 2200995 };
-
 	// void PipboyManager::PlayPipboyOpenAnim(PipboyManager*, const BSFixedString&)
 	// Present in the old in-tree CommonLibF4 fork, absent from CommonLibF4RD.
 	inline constexpr REL::ID PlayPipboyOpenAnim{ 663900, 2225444, 2225444 };

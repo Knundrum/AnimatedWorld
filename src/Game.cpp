@@ -26,14 +26,12 @@ namespace AW::Game
 		using PlayActionNGFn = bool (*)(void*, std::uint32_t, RE::Actor*, RE::BGSAction*, RE::TESObjectREFR*);
 		using ApplySwapFn = void(__fastcall*)(RE::NiAVObject*, const RE::BGSMaterialSwap*, float, float, void*);
 		using IsActivationBlockedFn = bool (*)(RE::TESObjectREFR*);
-		using WornHasKeywordFn = bool (*)(RE::TESObjectREFR*, RE::BGSKeyword*);
 		using PlayPipboyOpenAnimFn = void (*)(RE::PipboyManager*, const RE::BSFixedString&);
 
 		std::uintptr_t g_playAction{ 0 };
 		bool g_playActionVMFirst{ false };
 		ApplySwapFn g_applySwap{ nullptr };
 		IsActivationBlockedFn g_isActivationBlocked{ nullptr };
-		WornHasKeywordFn g_wornHasKeyword{ nullptr };
 		PlayPipboyOpenAnimFn g_playPipboyOpenAnim{ nullptr };
 
 		template <class F>
@@ -128,7 +126,6 @@ namespace AW::Game
 
 		Bind(g_applySwap, "ApplyMaterialSwap"sv, Addresses::ApplyMaterialSwap);
 		Bind(g_isActivationBlocked, "IsActivationBlocked"sv, Addresses::IsActivationBlocked);
-		Bind(g_wornHasKeyword, "WornHasKeyword"sv, Addresses::WornHasKeyword);
 		Bind(g_playPipboyOpenAnim, "PlayPipboyOpenAnim"sv, Addresses::PlayPipboyOpenAnim);
 
 		if (!g_playAction) {
@@ -166,6 +163,11 @@ namespace AW::Game
 		g_applySwap(a_object, a_swap, 1.0f, 1.0f, nullptr);
 	}
 
+	RE::NiAVObject* FindNode(RE::NiAVObject* a_root, const RE::BSFixedString& a_name)
+	{
+		return a_root ? a_root->GetObjectByName(a_name) : nullptr;
+	}
+
 	bool CanTestActivationBlocked() noexcept
 	{
 		return g_isActivationBlocked != nullptr;
@@ -178,20 +180,6 @@ namespace AW::Game
 		}
 
 		return g_isActivationBlocked(a_ref);
-	}
-
-	bool CanTestWornKeyword() noexcept
-	{
-		return g_wornHasKeyword != nullptr;
-	}
-
-	bool WornHasKeyword(RE::TESObjectREFR* a_ref, RE::BGSKeyword* a_keyword)
-	{
-		if (!g_wornHasKeyword || !a_ref || !a_keyword) {
-			return false;
-		}
-
-		return g_wornHasKeyword(a_ref, a_keyword);
 	}
 
 	bool CanReopenPipboy() noexcept

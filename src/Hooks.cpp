@@ -27,7 +27,6 @@ namespace AW::Hooks
 		// -------------------------------------------------------------------
 		constexpr auto ESP_NAME = "Animated World - Base.esp"sv;
 
-		constexpr std::uint32_t FORMID_IDLE_STOP_FIX = 0x34D3A;
 		constexpr std::uint32_t FORMID_ACTION_ACTIVATE = 0x12196;
 		constexpr std::uint32_t FORMID_ACTION_ITEM_ADDED = 0x2B4D9;
 		constexpr std::uint32_t FORMID_ACTION_EQUIP_ANIM = 0x18481;
@@ -60,10 +59,6 @@ namespace AW::Hooks
 		// Tunable in game without a rebuild; see Diagnostics::PickupDelayOverride.
 		constexpr auto CLIP_UNREADABLE_FALLBACK = 1500ms;
 
-		// The IdleStop fix used to latch on forever if the event never arrived,
-		// so a later unrelated IdleStop would consume it.  It now expires.
-		constexpr auto IDLE_STOP_TIMEOUT = 2s;
-
 		// An armed animation whose clip never turns into DynamicIdle used to
 		// poll every frame for the rest of the session.  Give it up eventually.
 		constexpr auto ANIMATION_PENDING_TIMEOUT = 3s;
@@ -71,6 +66,16 @@ namespace AW::Hooks
 		// Enough to see a pickup's whole event vocabulary once; a cap so a long
 		// session cannot grow this without bound.
 		constexpr std::size_t MAX_REPORTED_PENDING_EVENTS = 16;
+
+		// Skeleton nodes an animation object can be attached to.  The swap is
+		// scoped to whichever of these exists; see ApplyHeldItemSwap.
+		constexpr std::array ANIM_OBJECT_NODES{
+			"AnimObjectA"sv,
+			"AnimObjectB"sv,
+			"AnimObjectL"sv,
+			"AnimObjectR"sv,
+			"AnimObject"sv
+		};
 
 		constexpr auto DYNAMIC_IDLE_CLIP = "DynamicIdle"sv;
 		constexpr auto EVENT_IDLE_STOP = "IdleStop"sv;
@@ -83,7 +88,6 @@ namespace AW::Hooks
 		// -------------------------------------------------------------------
 		// Resolved plugin forms
 		// -------------------------------------------------------------------
-		RE::BGSKeyword* g_idleStopFixKeyword{ nullptr };
 		RE::BGSAction* g_actionActivate{ nullptr };
 		RE::BGSAction* g_actionItemAdded{ nullptr };
 		RE::BGSAction* g_actionEquipAnim{ nullptr };
@@ -101,9 +105,6 @@ namespace AW::Hooks
 		// State machine
 		// -------------------------------------------------------------------
 		bool g_reopenPipboy{ false };
-
-		bool g_idleStopFixArmed{ false };
-		Clock::time_point g_idleStopFixExpiry{};
 
 		bool g_animationPending{ false };
 		Clock::time_point g_animationDeadline{};
@@ -168,6 +169,7 @@ namespace AW::Hooks
 		bool g_loggedArmed{ false };
 		bool g_loggedFired{ false };
 		bool g_loggedArmRequest{ false };
+		bool g_loggedSwapTarget{ false };
 		bool g_loggedAddAcquiredEntry{ false };
 		bool g_loggedHandlePlayerItemEntry{ false };
 		bool g_loggedIdleDuration{ false };
@@ -241,9 +243,6 @@ namespace AW::Hooks
 				g_npcTarget = CreateDummyReference();
 			}
 
-			if (!g_idleStopFixKeyword) {
-				g_idleStopFixKeyword = dataHandler->LookupForm<RE::BGSKeyword>(FORMID_IDLE_STOP_FIX, ESP_NAME);
-			}
 			if (!g_actionActivate) {
 				g_actionActivate = dataHandler->LookupForm<RE::BGSAction>(FORMID_ACTION_ACTIVATE, ESP_NAME);
 			}
@@ -268,22 +267,15 @@ namespace AW::Hooks
 			if (g_formsReady && !reported) {
 				reported = true;
 				logger::info(
-					"forms resolved: activate={} itemAdded={} equip={} flashlight={} keyword={} pipboyGlobal={}",
+					"forms resolved: activate={} itemAdded={} equip={} flashlight={} pipboyGlobal={}",
 					g_actionActivate != nullptr,
 					g_actionItemAdded != nullptr,
 					g_actionEquipAnim != nullptr,
 					g_actionFlashlight != nullptr,
-					g_idleStopFixKeyword != nullptr,
 					g_globalPipboyEquipAnims != nullptr);
 			}
 
 			return g_formsReady;
-		}
-
-		void ArmIdleStopFix()
-		{
-			g_idleStopFixArmed = true;
-			g_idleStopFixExpiry = Clock::now() + IDLE_STOP_TIMEOUT;
 		}
 
 		void ArmAnimation()
@@ -318,6 +310,66 @@ namespace AW::Hooks
 				return static_cast<RE::TESObjectMISC*>(a_item)->swapForm;
 			default:
 				return nullptr;
+			}
+		}
+
+		// The picked-up item's material swap recolours the prop the animation puts
+		// in the player's hand.  It used to be applied to player->Get3D() - the
+		// whole skeleton - and the engine matches a swap by MATERIAL PATH rather
+		// than by node, so every piece of worn armour sharing a source material
+		// with the item was rewritten too.  Permanently: nothing reverts a swap,
+		// so the outfit stayed wrong until its 3D was rebuilt by a re-equip.
+		//
+		// How badly that leaks depends on how much the player's armour reuses the
+		// material paths the item's swap names, which is why it was invisible
+		// here and obvious to someone running modded armour.
+		//
+		// Now scoped to the animation-object node.  If no such node is found the
+		// swap is skipped rather than widened back to the skeleton: the prop
+		// keeps its default colours for about a second, which is a cosmetic loss,
+		// where repainting the player's outfit is not.
+		void ApplyHeldItemSwap(RE::PlayerCharacter* a_player, RE::BGSMaterialSwap* a_swap)
+		{
+			if (!a_player || !a_swap) {
+				return;
+			}
+
+			// First and third person are separate skeletons and the prop hangs
+			// off whichever one is being rendered.
+			RE::NiAVObject* const roots[]{ a_player->Get3D(true), a_player->Get3D(false) };
+
+			std::size_t applied = 0;
+			std::string_view matched{};
+
+			for (auto* root : roots) {
+				if (!root) {
+					continue;
+				}
+
+				for (const auto name : ANIM_OBJECT_NODES) {
+					if (auto* node = Game::FindNode(root, RE::BSFixedString{ name })) {
+						Game::ApplyMaterialSwap(node, a_swap);
+						++applied;
+						matched = name;
+					}
+				}
+			}
+
+			if (!g_loggedSwapTarget) {
+				g_loggedSwapTarget = true;
+
+				if (applied > 0) {
+					logger::info(
+						"[aw] material swap scoped to {} animation-object node(s), e.g. '{}'",
+						applied,
+						matched);
+				} else {
+					logger::info(
+						"[aw] material swap skipped: none of the animation-object nodes exist on "
+						"the player's 3D. The held prop keeps its default colours; nothing else "
+						"is touched. If the prop should be recoloured, the node is named something "
+						"this build does not know about.");
+				}
 			}
 		}
 
@@ -393,15 +445,7 @@ namespace AW::Hooks
 					}
 				}
 
-				if (event == EVENT_IDLE_STOP && g_idleStopFixArmed) {
-					const bool holdsFixedItem =
-						g_idleStopFixKeyword &&
-						Game::CanTestWornKeyword() &&
-						Game::WornHasKeyword(player, g_idleStopFixKeyword);
-
-					player->UpdateAnimation(holdsFixedItem ? 2.0f : 0.0f);
-					g_idleStopFixArmed = false;
-				} else if (event == EVENT_REEVALUATE && g_reopenPipboy) {
+				if (event == EVENT_REEVALUATE && g_reopenPipboy) {
 					g_reopenPipboy = false;
 
 					auto* pipboy = RE::PipboyManager::GetSingleton();
@@ -503,12 +547,6 @@ namespace AW::Hooks
 			LogOnce(g_loggedDriverLive, "driver live - state machine running"sv);
 
 			const auto now = Clock::now();
-
-			// An armed IdleStop fix that never saw its event must not survive
-			// into an unrelated animation.
-			if (g_idleStopFixArmed && now >= g_idleStopFixExpiry) {
-				g_idleStopFixArmed = false;
-			}
 
 			if (g_animationPending && now >= g_animationExpiry) {
 				if (g_trace) {
@@ -666,7 +704,7 @@ namespace AW::Hooks
 				g_matSwapPending = false;
 
 				if (g_pendingSwap) {
-					Game::ApplyMaterialSwap(player->Get3D(), g_pendingSwap);
+					ApplyHeldItemSwap(player, g_pendingSwap);
 				}
 
 				ClearPendingSwap();
@@ -699,10 +737,6 @@ namespace AW::Hooks
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			if (player && player->GetFullyLoaded3D() && a_target &&
 				EnsureFormsResolved() && g_actionActivate) {
-				if (player->weaponState != RE::WEAPON_STATE::kSheathed) {
-					ArmIdleStopFix();
-				}
-
 				if (Game::PlayAction(player, g_actionActivate, a_target)) {
 					g_itemFromGround = true;
 				}
@@ -742,10 +776,6 @@ namespace AW::Hooks
 			}
 
 			g_playerTarget->data.objectReference = a_item;
-
-			if (player->weaponState != RE::WEAPON_STATE::kSheathed) {
-				ArmIdleStopFix();
-			}
 
 			const bool played = Game::PlayAction(player, g_actionActivate, g_playerTarget);
 			ArmAnimation();
@@ -859,7 +889,6 @@ namespace AW::Hooks
 			// The original fired the flashlight animation unconditionally, which
 			// includes calls made while the player has no 3D (loading, main menu).
 			if (player && player->GetFullyLoaded3D() && EnsureFormsResolved() && g_actionFlashlight) {
-				ArmIdleStopFix();
 				static_cast<void>(Game::PlayAction(player, g_actionFlashlight, player));
 			}
 

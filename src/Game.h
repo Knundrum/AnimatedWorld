@@ -1,9 +1,9 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Thin wrappers over engine functions, plus the two APIs the old in-tree
+// Thin wrappers over engine functions, plus the one API the old in-tree
 // CommonLibF4 fork carried that upstream CommonLibF4RD does not
-// (TESObjectREFR::WornHasKeyword and PipboyManager::PlayPipboyOpenAnim).
+// (PipboyManager::PlayPipboyOpenAnim).
 //
 // Everything here is optional: if an address could not be resolved on the
 // running runtime the wrapper is inert and the matching Can*() query says so,
@@ -29,13 +29,19 @@ namespace AW::Game
 	[[nodiscard]] bool PlayAction(RE::Actor* a_actor, RE::BGSAction* a_action, RE::TESObjectREFR* a_target);
 
 	[[nodiscard]] bool CanApplyMaterialSwap() noexcept;
+
+	// A material swap matches geometry by MATERIAL PATH, not by node, so the
+	// subtree this is given is the whole of its blast radius.  Hand it the
+	// narrowest node that holds the thing being recoloured.
 	void ApplyMaterialSwap(RE::NiAVObject* a_object, const RE::BGSMaterialSwap* a_swap);
+
+	// Named node anywhere under a_root, or nullptr.  Virtual dispatch, so the
+	// engine's own NiNode implementation does the walking: no address id and no
+	// struct offsets, unlike every other traversal in this plugin.
+	[[nodiscard]] RE::NiAVObject* FindNode(RE::NiAVObject* a_root, const RE::BSFixedString& a_name);
 
 	[[nodiscard]] bool CanTestActivationBlocked() noexcept;
 	[[nodiscard]] bool IsActivationBlocked(RE::TESObjectREFR* a_ref);
-
-	[[nodiscard]] bool CanTestWornKeyword() noexcept;
-	[[nodiscard]] bool WornHasKeyword(RE::TESObjectREFR* a_ref, RE::BGSKeyword* a_keyword);
 
 	[[nodiscard]] bool CanReopenPipboy() noexcept;
 	void PlayPipboyOpenAnim(RE::PipboyManager* a_manager, const RE::BSFixedString& a_menuName);
